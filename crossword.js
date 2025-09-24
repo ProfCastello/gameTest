@@ -26,16 +26,30 @@ class CrosswordGenerator {
         
         if (words.length === 0) return false;
         
+        // Ordenar palavras por tamanho (maiores primeiro para melhor encaixe)
+        const sortedWords = words.sort((a, b) => b.word.length - a.word.length);
+        
         // Colocar a primeira palavra no centro
-        const firstWord = words[0];
+        const firstWord = sortedWords[0];
         const centerRow = Math.floor(this.gridSize / 2);
         const centerCol = Math.floor((this.gridSize - firstWord.word.length) / 2);
         
         this.placeWord(firstWord, centerRow, centerCol, true); // horizontal
         
-        // Tentar colocar as outras palavras
-        for (let i = 1; i < words.length; i++) {
-            this.findBestPlacement(words[i]);
+        // Tentar colocar as outras palavras com múltiplas tentativas
+        for (let i = 1; i < Math.min(sortedWords.length, this.getMaxWordsForGrid()); i++) {
+            let attempts = 0;
+            let placed = false;
+            
+            while (attempts < 20 && !placed) {
+                placed = this.findBestPlacement(sortedWords[i]);
+                attempts++;
+                
+                if (!placed && attempts > 10) {
+                    // Tentar posicionamento aleatório como último recurso
+                    placed = this.tryRandomPlacement(sortedWords[i]);
+                }
+            }
         }
         
         this.fillBlackCells();
@@ -81,7 +95,69 @@ class CrosswordGenerator {
             bestPlacements.sort((a, b) => b.intersections - a.intersections);
             const best = bestPlacements[0];
             this.placeWord(wordObj, best.row, best.col, best.isHorizontal);
+            return true;
         }
+        
+        return false;
+    }
+    
+    // Tentar posicionamento aleatório
+    tryRandomPlacement(wordObj) {
+        const word = wordObj.word;
+        const maxAttempts = 50;
+        
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            const isHorizontal = Math.random() < 0.5;
+            const maxRow = isHorizontal ? this.gridSize - 1 : this.gridSize - word.length;
+            const maxCol = isHorizontal ? this.gridSize - word.length : this.gridSize - 1;
+            
+            if (maxRow < 0 || maxCol < 0) continue;
+            
+            const row = Math.floor(Math.random() * (maxRow + 1));
+            const col = Math.floor(Math.random() * (maxCol + 1));
+            
+            if (this.canPlaceWordLoose(wordObj, row, col, isHorizontal)) {
+                this.placeWord(wordObj, row, col, isHorizontal);
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
+    // Verificação mais flexível para posicionamento
+    canPlaceWordLoose(wordObj, row, col, isHorizontal) {
+        const word = wordObj.word;
+        
+        if (row < 0 || col < 0) return false;
+        
+        if (isHorizontal) {
+            if (col + word.length > this.gridSize) return false;
+            if (row >= this.gridSize) return false;
+        } else {
+            if (row + word.length > this.gridSize) return false;
+            if (col >= this.gridSize) return false;
+        }
+        
+        // Verificar se há espaço suficiente
+        for (let i = 0; i < word.length; i++) {
+            const currentRow = isHorizontal ? row : row + i;
+            const currentCol = isHorizontal ? col + i : col;
+            
+            const cell = this.grid[currentRow][currentCol];
+            
+            // Se há uma letra diferente, não pode colocar
+            if (cell.letter && cell.letter !== word[i]) {
+                return false;
+            }
+        }
+        
+        return true;
+    }
+    
+    // Calcular número máximo de palavras baseado no tamanho do grid
+    getMaxWordsForGrid() {
+        return Math.min(this.words.length, Math.floor(this.gridSize * 1.2));
     }
     
     // Verificar se uma palavra pode ser colocada
